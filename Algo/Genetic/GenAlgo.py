@@ -1,88 +1,99 @@
 import random
 import numpy as np
 
-# Все товары и их координаты
-product_coords = {
-    "milk": (2, 3),
-    "bread": (5, 4),
-    "eggs": (1, 1),
-    "cheese": (6, 2),
-    "apples": (3, 6),
-    "fish": (7, 5),
-    "coffee": (4, 1),
-}
-
-# Частота покупок по истории (на основе анализа данных)
-purchase_prob = {
-    "milk": 0.8,
-    "bread": 0.7,
-    "eggs": 0.6,
-    "cheese": 0.5,
-    "apples": 0.4,
-    "fish": 0.2,
-    "coffee": 0.3
-}
-
 start_point = (0, 0)
 
-# Генерация случайного списка покупок с учетом вероятностей
-def generate_shopping_list():
-    return [item for item in product_coords if random.random() < purchase_prob[item]]
+class Gen:
+    def __init__(self, data: list = None, place: set = None, generations: int = 100, population_size: int = 50,
+                 mutation_rate: float = 0.1):
+        self.data = data
+        self.mutation_rate = mutation_rate
 
-# Вычисление расстояния
-def distance(p1, p2):
-    return np.linalg.norm(np.array(p1) - np.array(p2))
+        self.generations = generations
+        self.population_size = population_size
+        self.products = self.get_products()
+        self.place = place
 
-# Фитнес-функция
-def fitness(route, coords):
-    if not route:
-        return float('inf')
-    dist = distance(start_point, coords[route[0]])
-    for i in range(len(route) - 1):
-        dist += distance(coords[route[i]], coords[route[i + 1]])
-    dist += distance(coords[route[-1]], start_point)
-    return dist
+    def genetic_algorithm(self):
+        population = self.create_population()
 
-# Создание популяции
-def create_population(size, items):
-    return [random.sample(items, len(items)) for _ in range(size)]
+        for _ in range(self.generations):
+            population = sorted(population, key=self.fitness)
+            next_gen = population[:10]  # элита
 
-def crossover(p1, p2):
-    cut = random.randint(1, len(p1) - 2)
-    child = p1[:cut] + [item for item in p2 if item not in p1[:cut]]
-    return child
+            while len(next_gen) < self.population_size:
+                p1, p2 = random.sample(population[:20], 2)
+                child = self.crossover(p1, p2)
+                child = self.mutate(child)
+                next_gen.append(child)
 
-def mutate(route, mutation_rate=0.1):
-    for i in range(len(route)):
-        if random.random() < mutation_rate:
-            j = random.randint(0, len(route) - 1)
-            route[i], route[j] = route[j], route[i]
-    return route
+            population = next_gen
 
-# Генетический алгоритм
-def genetic_algorithm(generations=100, population_size=50):
-    shopping_list = generate_shopping_list()
-    if not shopping_list:
-        return [], 0.0  # ничего не покупает
+        best = min(population, key=self.fitness)
+        return self.new_place(best), self.fitness(best)
 
-    population = create_population(population_size, shopping_list)
+    def new_place(self,best_placement):
+        final_mapping = {product: loc for product, loc in zip(best_placement, self.place)}
+        return final_mapping
+    def create_population(self):
+        return [random.sample(self.products, len(self.products)) for _ in range(self.population_size)]
 
-    for gen in range(generations):
-        population = sorted(population, key=lambda r: fitness(r, product_coords))
-        next_gen = population[:10]
+    #
+    def route_distance(self, purchase, placement):
+        # получаем координаты товаров из покупки
+        coords = [placement[item] for item in purchase]
+        dist = self.distance(start_point, coords[0])
+        for i in range(len(coords) - 1):
+            dist += self.distance(coords[i], coords[i + 1])
+        dist += self.distance(coords[-1], start_point)
+        return dist
 
-        while len(next_gen) < population_size:
-            p1, p2 = random.sample(population[:20], 2)
-            child = crossover(p1, p2)
-            child = mutate(child)
-            next_gen.append(child)
+    # Фитнес-функция: средняя длина маршрута по всем покупкам
+    def fitness(self, gene):  # gene = размещение товаров по точкам
+        placement = {product: loc for product, loc in zip(gene, self.place)}
+        total = 0
+        for purchase in self.data:
+            total += self.route_distance(purchase, placement)
+        return total / len(self.data)
 
-        population = next_gen
+    def mutate(self, gene):
+        for i in range(len(gene)):
+            if random.random() < self.mutation_rate:
+                j = random.randint(0, len(gene) - 1)
+                gene[i], gene[j] = gene[j], gene[i]
+        return gene
 
-    best = min(population, key=lambda r: fitness(r, product_coords))
-    return best, fitness(best, product_coords)
+    #
+    def get_products(self):
+        product = set()
+        for tr in self.data:
+            for pr in tr:
+                product.add(pr)
 
+        return list(product)
+    @staticmethod
+    def distance(p1, p2):
+        return np.linalg.norm(np.array(p1) - np.array(p2))
+
+    @staticmethod
+    def crossover(p1, p2):
+        cut = random.randint(1, len(p1) - 2)
+        child = p1[:cut] + [item for item in p2 if item not in p1[:cut]]
+        return child
+
+
+locations = [(1,1), (2,5), (4,4), (6,1), (3,2), (5,5)]
+
+# История покупок — наборы покупок пользователей
+purchase_history = [
+    ["milk", "bread", "eggs"],
+    ["cheese", "apples"],
+    ["bread", "milk"],
+    ["eggs", "fish"],
+    ["fish", "cheese", "milk"]
+]
 # Запуск
-best_route, total_distance = genetic_algorithm()
+algo = Gen(data = purchase_history, place=locations)
+best_route, total_distance = algo.genetic_algorithm()
 print("Список покупок:", best_route)
 print("Оптимальный маршрут длиной:", round(total_distance, 2))
